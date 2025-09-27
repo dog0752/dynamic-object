@@ -194,10 +194,10 @@ public:
 			if (maybe_offset.has_value())
 			{
 				const size_t offset = *maybe_offset;
+				if constexpr (std::is_same_v<T, std::any>)
+					return values_[offset];
 				if (const T *val = std::any_cast<T>(&(values_[offset])))
-				{
 					return *val;
-				}
 				return std::unexpected("type mismatch for property");
 			}
 
