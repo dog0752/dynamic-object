@@ -63,7 +63,6 @@ class ObjectFactory
 {
 private:
 	class Shape : public std::enable_shared_from_this<Shape>
-
 	{
 	public:
 		/* constructor for the root shape */
@@ -81,11 +80,14 @@ private:
 		}
 
 		/* looks up the memory offset for a given property identifier */
-		std::expected<size_t, std::monostate> getOffset(size_t key) const {
-			const Shape* current = this;
+		std::expected<size_t, std::monostate> getOffset(size_t key) const
+		{
+			const Shape *current = this;
 			/* the root's parent is null, so this loop always terminates */
-			while (current->parent_) {
-				if (current->property_key_ == key) {
+			while (current->parent_)
+			{
+				if (current->property_key_ == key)
+				{
 					return current->offset_;
 				}
 				current = current->parent_.get();
@@ -93,21 +95,22 @@ private:
 			return std::unexpected(std::monostate{}); /* signal "not found" */
 		}
 
-		size_t getNewOffset() const
+		inline size_t getNewOffset() const
 		{
 			return offset_;
 		}
-		size_t getPropertyCount() const
+		inline size_t getPropertyCount() const
 		{
 			return offset_ == static_cast<size_t>(-1) ? 0 : offset_ + 1;
 		}
+
 	private:
 		friend class ObjectFactory;
 
 		/**
 		 * parent_ points to the previous shape in the chain.
 		 * A lookup walks up this chain until it finds the property or
-		 * hits the root.   
+		 * hits the root.
 		 */
 		std::shared_ptr<const Shape> parent_;
 
@@ -129,6 +132,7 @@ private:
 		 */
 		std::unordered_map<size_t, std::weak_ptr<Shape>> transitions_;
 	};
+
 public:
 	/**
 	 * a unique identifier for a property name, created by interning a
@@ -138,120 +142,118 @@ public:
 
 	class DynObject
 	{
-		public:
-			using Args = std::vector<std::any>;
-			using Method = std::function<std::any(DynObject &, Args)>;
+	public:
+		using Args = std::vector<std::any>;
+		using Method = std::function<std::any(DynObject &, Args)>;
 
-			/**
-			 * the object's prototype for inheritance. properties not found
-			 * on this object will be looked up on its prototype 
-			 */
-			std::shared_ptr<DynObject> prototype = nullptr;
+		/**
+		 * the object's prototype for inheritance. properties not found
+		 * on this object will be looked up on its prototype
+		 */
+		std::shared_ptr<DynObject> prototype = nullptr;
 
-			template <typename T>
-				void set(ObjectFactory &factory, Identifier key, T &&value)
-				{
-					unique_lock_t<object_mutex_t> lock(mutex_);
+		template <typename T>
+		void set(ObjectFactory &factory, Identifier key, T &&value)
+		{
+			unique_lock_t<object_mutex_t> lock(mutex_);
 
-					auto maybe_offset = shape_->getOffset(key);
+			auto maybe_offset = shape_->getOffset(key);
 
-					if (maybe_offset.has_value())
-					{
-						/**
-						 * property already exists. get the offset and update the value
-						 */
-						const size_t offset = *maybe_offset;
-						values_[offset] = std::forward<T>(value);
-					}
-					else
-					{
-						/* property doesn't exist: this is a shape transition. */
-						unique_lock_t<factory_mutex_t> factory_lock(
-								factory.factory_mutex_);
-						auto new_shape = factory.transition(shape_, key);
-						shape_ = new_shape;
-
-						/**
-						 * pre allocate the vector to the new required
-						 * size. avoids multiple reallocations
-						 */
-						values_.resize(new_shape->getPropertyCount());
-						values_[new_shape->getNewOffset()] = std::forward<T>(value);
-					}
-				}
-
-			template <typename T>
-				std::expected<T, std::string> get(Identifier key) const
-				{
-					shared_lock_t<object_mutex_t> lock(mutex_);
-
-					auto maybe_offset = shape_->getOffset(key);
-
-					if (maybe_offset.has_value())
-					{
-						const size_t offset = *maybe_offset;
-						if (const T *val = std::any_cast<T>(&(values_[offset])))
-
-						{
-							return *val;
-						}
-						return std::unexpected("type mismatch for property");
-					}
-
-#ifdef DYNOBJECT_MULTITHREADED
-					lock.unlock(); /* unlock before recursing to mitigate deadlocks */
-#endif
-
-					if (prototype)
-
-					{
-						return prototype->get<T>(key);
-					}
-
-					return std::unexpected("no such property");
-				}
-
-			template <typename R = std::any>
-				std::expected<R, std::string> call(Identifier name, Args args = {})
-				{
-					auto maybe_method = this->get<Method>(name);
-
-					if (!maybe_method.has_value())
-					{
-						return std::unexpected(maybe_method.error());
-					}
-
-					const Method &method_to_call = maybe_method.value();
-					std::any result = method_to_call(*this, std::move(args));
-
-					if constexpr (std::is_same_v<R, std::any>)
-					{
-						return result;
-					}
-					else
-					{
-						if (const R *val = std::any_cast<R>(&result))
-						{
-							return *val;
-						}
-						return std::unexpected("type mismatch for method return value");
-					}
-				}
-		private:
-			friend class ObjectFactory;
-
-			/**
-			 * constructor is private, only the factory can create an object
-			 */
-			explicit DynObject(std::shared_ptr<Shape> initial_shape)
-				: shape_(std::move(initial_shape))
-
+			if (maybe_offset.has_value())
 			{
+				/**
+				 * property already exists. get the offset and update the value
+				 */
+				const size_t offset = *maybe_offset;
+				values_[offset] = std::forward<T>(value);
+			}
+			else
+			{
+				/* property doesn't exist: this is a shape transition. */
+				unique_lock_t<factory_mutex_t> factory_lock(
+					factory.factory_mutex_);
+				auto new_shape = factory.transition(shape_, key);
+				shape_ = new_shape;
+
+				/**
+				 * pre allocate the vector to the new required
+				 * size. avoids multiple reallocations
+				 */
+				values_.resize(new_shape->getPropertyCount());
+				values_[new_shape->getNewOffset()] = std::forward<T>(value);
+			}
+		}
+
+		template <typename T>
+		std::expected<T, std::string> get(Identifier key) const
+		{
+			shared_lock_t<object_mutex_t> lock(mutex_);
+
+			auto maybe_offset = shape_->getOffset(key);
+
+			if (maybe_offset.has_value())
+			{
+				const size_t offset = *maybe_offset;
+				if (const T *val = std::any_cast<T>(&(values_[offset])))
+				{
+					return *val;
+				}
+				return std::unexpected("type mismatch for property");
 			}
 
-			std::shared_ptr<Shape> shape_;
-			std::vector<std::any> values_;
-			mutable object_mutex_t mutex_;
+#ifdef DYNOBJECT_MULTITHREADED
+			lock.unlock(); /* unlock before recursing to mitigate deadlocks */
+#endif
+
+			if (prototype)
+			{
+				return prototype->get<T>(key);
+			}
+
+			return std::unexpected("no such property");
+		}
+
+		template <typename R = std::any>
+		std::expected<R, std::string> call(Identifier name, Args args = {})
+		{
+			auto maybe_method = this->get<Method>(name);
+
+			if (!maybe_method.has_value())
+			{
+				return std::unexpected(maybe_method.error());
+			}
+
+			const Method &method_to_call = maybe_method.value();
+			std::any result = method_to_call(*this, std::move(args));
+
+			if constexpr (std::is_same_v<R, std::any>)
+			{
+				return result;
+			}
+			else
+			{
+				if (const R *val = std::any_cast<R>(&result))
+				{
+					return *val;
+				}
+				return std::unexpected("type mismatch for method return value");
+			}
+		}
+
+	private:
+		friend class ObjectFactory;
+
+		/**
+		 * constructor is private, only the factory can create an object
+		 */
+		explicit DynObject(std::shared_ptr<Shape> initial_shape)
+			: shape_(std::move(initial_shape))
+		{
+		}
+
+		std::shared_ptr<Shape> shape_;
+		std::vector<std::any> values_;
+		mutable object_mutex_t mutex_;
 	};
 
 	/* FACTORY METHODS */
@@ -293,13 +295,12 @@ public:
 	}
 
 	/**
-	 * retrieves the original string from an interned identifier (for debugging)  
+	 * retrieves the original string from an interned identifier (for debugging)
 	 */
 	std::string_view getString(Identifier id) const
 	{
 		unique_lock_t<factory_mutex_t> lock(intern_mutex_);
 		if (id < id_to_str_.size())
-
 		{
 			return id_to_str_[id];
 		}
@@ -309,14 +310,14 @@ public:
 private:
 	/**
 	 * calculates the new shape an object transitions to when a new property
-	 * is added  
+	 * is added
 	 */
 	std::shared_ptr<Shape> transition(std::shared_ptr<Shape> from,
-			Identifier key)
+									  Identifier key)
 	{
 		/* check cache first */
 		if (auto it = from->transitions_.find(key);
-				it != from->transitions_.end())
+			it != from->transitions_.end())
 		{
 			if (auto next_shape = it->second.lock())
 			{
