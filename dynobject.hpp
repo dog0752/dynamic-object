@@ -5,6 +5,7 @@
  * this is a single file header only library that implements a
  * dynamic object system for C++
  */
+
 #ifndef DYNOBJECT_HPP
 #define DYNOBJECT_HPP
 
@@ -18,6 +19,8 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <sstream>
+#include <iomanip>
 
 namespace dog0752
 {
@@ -239,6 +242,31 @@ public:
 				return std::unexpected("type mismatch for method return value");
 			}
 		}
+		/* JSON serialization */
+		std::string toJSON(const ObjectFactory &factory)
+			const /* need factory because of interning */
+		{
+			std::ostringstream oss;
+			oss << "{";
+			bool first = true;
+
+			/* iterate through all interned identifiers */
+			for (size_t i = 0; i < factory.id_to_str_.size(); ++i)
+			{
+				auto maybe_val = this->get<std::any>(i);
+				if (maybe_val.has_value())
+				{
+					if (!first)
+						oss << ",";
+					oss << escapeJSONString(std::string(factory.getString(i)))
+						<< ":" << valueToJSON(*maybe_val);
+					first = false;
+				}
+			}
+
+			oss << "}";
+			return oss.str();
+		}
 
 	private:
 		friend class ObjectFactory;
@@ -254,6 +282,112 @@ public:
 		std::shared_ptr<Shape> shape_;
 		std::vector<std::any> values_;
 		mutable object_mutex_t mutex_;
+
+		/* --- JSON helpers --- */
+
+		static std::string escapeJSONString(const std::string &s)
+		{
+			std::ostringstream oss;
+			oss << "\"";
+			for (char c : s)
+			{
+				switch (c)
+				{
+				case '\"':
+					oss << "\\\"";
+					break;
+				case '\\':
+					oss << "\\\\";
+					break;
+				case '\b':
+					oss << "\\b";
+					break;
+				case '\f':
+					oss << "\\f";
+					break;
+				case '\n':
+					oss << "\\n";
+					break;
+				case '\r':
+					oss << "\\r";
+					break;
+				case '\t':
+					oss << "\\t";
+					break;
+				default:
+					if ((unsigned char)c < 0x20)
+					{
+						oss << "\\u" << std::hex << std::setw(4)
+							<< std::setfill('0') << (int)(unsigned char)c;
+					}
+					else
+					{
+						oss << c;
+					}
+				}
+			}
+			oss << "\"";
+			return oss.str();
+		}
+
+		static std::string valueToJSON(const std::any &val)
+		{
+			if (!val.has_value())
+				return "null";
+
+			if (auto p = std::any_cast<int>(&val))
+				return std::to_string(*p);
+			if (auto p = std::any_cast<double>(&val))
+				return std::to_string(*p);
+			if (auto p = std::any_cast<float>(&val))
+				return std::to_string(*p);
+			if (auto p = std::any_cast<bool>(&val))
+				return *p ? "true" : "false";
+			if (auto p = std::any_cast<std::string>(&val))
+				return escapeJSONString(*p);
+			if (auto p = std::any_cast<const char *>(&val))
+				return escapeJSONString(*p);
+
+			if (auto p = std::any_cast<std::vector<std::any>>(&val))
+			{
+				std::ostringstream oss;
+				oss << "[";
+				bool first = true;
+				for (auto &elem : *p)
+				{
+					if (!first)
+						oss << ",";
+					oss << valueToJSON(elem);
+					first = false;
+				}
+				oss << "]";
+				return oss.str();
+			}
+
+			if (auto p =
+					std::any_cast<std::unordered_map<std::string, std::any>>(
+						&val))
+			{
+				std::ostringstream oss;
+				oss << "{";
+				bool first = true;
+				for (auto &[k, v] : *p)
+				{
+					if (!first)
+						oss << ",";
+					oss << escapeJSONString(k) << ":" << valueToJSON(v);
+					first = false;
+				}
+				oss << "}";
+				return oss.str();
+			}
+
+#ifdef __cpp_rtti
+			return std::string{"<"} + val.type().name() + ">";
+#else
+			return "\"<?>\"";
+#endif
+		}
 	};
 
 	/* FACTORY METHODS */
