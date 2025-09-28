@@ -9,3 +9,9 @@ would not use on real projects
 ## usage
 put dynobject.hpp on your include folder and then
 check usage.cpp
+
+---
+
+## attribution
+shapes and some other features are definitely stolen from v8  
+v8 is licensed under a bsd like license. https://v8.dev
